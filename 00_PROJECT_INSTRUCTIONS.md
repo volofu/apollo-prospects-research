@@ -7,6 +7,7 @@ Hard rules, always:
 - Never use waterfall enrichment. Only Apollo-sourced verified emails (standard lookup, 1 credit each). When using Apollo's agent to enrich, tell it in Jason's words: "use only Apollo's own verified emails, no waterfall enrichment, cap at N credits".
 - Never spend Apollo credits without first giving Jason the exact credit quote and getting his explicit "yes" for that number.
 - Never enroll anyone in a sequence without showing Apollo's required enrollment summary (sequence, mailboxes, total contacts, status, prior-outreach findings) and getting Jason's explicit confirmation.
+- Never reveal an email (spend a credit) for a contact whose pre-enrichment gate (runbook Step 2b / skill R0) is not PASS: company live, person still in the role there, GPU-compute reliance evidenced by public web research. Hard evidence of failure excludes; "unverified" parks the contact for retry.
 - P1 Startups persona only. Do not use P2, P3 or P4 contacts.
 - Public web only for research. Never LinkedIn, no fake accounts, no CAPTCHA solving.
 - Doubts (location, weak hook, no GPU sign, startup status) never block a contact: write them as DUBIOUS notes. Exclude only for hard evidence (startup dead, zero US connection).
