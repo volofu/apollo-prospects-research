@@ -1,0 +1,64 @@
+---
+name: "apollo-lean-research"
+description: "Self-improving, low-token research pipeline that fills opener, bridge and workload merge fields for every Apollo-verified-email startup contact: script-built keyword queries, one web search per contact on Sonnet (medium effort), machine validation, a learned source playbook, token tracking in Google Sheets, scheduled off-peak cloud runs, weekly-usage pause at 67%. Never spends Apollo credits."
+---
+
+# Apollo lean research (AGH Cloud, P1 Startups only)
+
+Purpose: give every contact that has an Apollo-verified email an opener, bridge and workload (plus arm-C helper fields) at the lowest token cost per good result, and get better at it every week. Personas P2, P3 and P4 are out of scope.
+
+## Hard rules
+- Public web only. Never open linkedin.com, never sign in, never create accounts, never solve CAPTCHAs. Page blocks: record `unreadable`, move on, no retry.
+- This skill never spends Apollo credits, never enriches, never enrolls, never sends. Credit reveals and enrollment happen only in an interactive session after Jason confirms a quote or Apollo's summary.
+- Never block a contact for a doubt; write DUBIOUS codes. Exclude only on hard evidence (startup dead, zero US connection).
+- Copy rules (machine-checked by `scripts/validate.py`): no prices or discounts; no "free"; "hyperscalers" never AWS/GCP/Azure; no partner names; no "I came across"; quotes under 15 words; bio/health/patient-data contacts get "We'd keep it to synthetic or de-identified data, since we're not a HIPAA environment." in the bridge; mark guesses "I'd guess".
+
+## Model and effort
+Research runs on **Sonnet, medium effort**: worker subagents use the Agent tool with `model: "sonnet"`, `effort: "medium"`; scheduled routines use `claude-sonnet-5-5`. Do not change the model on your own. If quality is poor, fix the playbook and prompts first and report to Jason.
+
+## Environments
+- **Mode A, Claude Code desktop (local):** scheduled tasks, `get_usage`, local files. Runs only while the app is open and the computer is awake.
+- **Mode B, normal claude.ai chat:** no scheduler, no subagents, no usage tool. Interactive batches of about 20 contacts, results in the Sheet tabs below.
+- **Mode C, Claude Code cloud (interactive session or scheduled routine):** Bash/Python, WebSearch/WebFetch, subagents, git checkout, and the claude.ai connectors (Apollo, Google Sheets). No local files, no Chrome, no usage tool. The repo holds docs and scripts only; never commit contact data (`.gitignore`). All state lives in Google Sheet tabs of the Master sheet (1CsfEUmnch_cbk6l8NCQbWqK0Cn1nCqeoF_019DdwsUg):
+  - `LR_Queue` (queue.csv columns), `LR_Results` (worker rows plus valid flag, batch_id, src_domain, est_tokens), `LR_State` (lock_heartbeat, paused, paused_by_cap, playbook_ver, done), `LR_Usage` (one row per batch), `LR_Sources` (per-domain stats), `LR_Variants` (per bucket x query variant), `LR_Playbook` (one row per playbook version), `LR_Retro` (retro report log).
+  The scripts run in the sandbox on temporary files built from these tabs (`queue.csv`, `out/*.tsv`, `usage.csv`).
+
+## Method (why it is cheap)
+1. **Script first, no LLM.** `prep_queue.py` keeps only Email Status Verified contacts, one lead per company by rank (siblings `hold=1`), strips generic keywords, keeps the 3 most distinctive (inverse document frequency), assigns bucket (robotics_vision, llm_agents, bio_health, video_media, data_ml_infra, other_ai), class (heavy/light), compliance flag, three query variants and **fallback fields**, so every contact always has valid merge fields even if research never reaches it.
+2. **One search per contact.** Variant `a` = keyword query; `b` = source-targeted query (`site:` filters from the playbook); `c` = compute-evidence query (careers/GPU/PyTorch/CUDA/training). `next_batch.py` assigns variants (explore until each has 30 samples per bucket, then 80% best / 20% explore). The worker runs exactly that one WebSearch (standard) and picks at most one concrete hook (launch, number, short quote, paper, interview). No second search, no retries.
+3. **Verify only where it pays.** If rank <= `verify_rank` (default 600) and the hook has a number or quote, run one WebFetch to confirm that fact. The retro may switch verification off for a domain that has confirmed at 95% or better over 50 or more checks.
+4. **Tiny orchestrator + workers.** The run reads state, calls `next_batch.py` (8 contacts), spawns up to 3 Sonnet worker subagents in parallel, logs usage, validates, loops. Research text never enters the orchestrator context.
+5. **Machine QA.** `validate.py` checks word counts, banned terms, quote length, compliance sentence, URL and evidence; failures revert to fallback fields.
+6. **Durable output.** Every batch is appended to `LR_Results` and `LR_Usage` before the next starts, so a cut-off run loses at most one batch.
+
+## WORKER PROMPT (pass verbatim, replace {batch})
+You research one hook per sales prospect, public web only, never LinkedIn. Read `{batch}` (line 1: #OUT_FILE, path, playbook_ver, batch_id; rows TSV: contact_id, rank, first, last, title, company, bucket, class, compliance, variant, query). For each row run ONE WebSearch (standard) using exactly the `query` column and count it. Choose at most one concrete hook about the person or their company, preferring in order: P (their own words or work), F (founder-authored: YC launch, company blog by a founder), C (company-level or press). If rank <= VERIFY_RANK and the hook has a number or quote, run ONE WebFetch of that URL to confirm only that fact and count it. Never a second search. Append one TSV line per contact to the out file with 19 columns: contact_id, opener (15-35 words, first person, starts "I read" or "I saw", names the concrete fact), bridge (10-45 words, hedged "I'd guess", ties it to a bursty GPU workload, compliance sentence if compliance=1, no prices, "hyperscalers", no partner names), workload (2-6 lowercase words reading in "real runway for {workload}"), wclass (heavy|light), hook_grade (P|F|C|NONE), source_url, evidence (max 20 words copied from the result), ev (fetch|search), d_loc, d_hook, d_compute, d_status (each `none` or a few words), variant (as given), playbook_ver (as given), searches (count), fetches (count), src_type (yc_launch|company_blog|press|podcast_interview|paper|github_hf|careers|investor_profile|company_site|other), class_src_url (the URL that justified heavy/light, or empty). If no concrete hook, leave opener empty, hook_grade NONE. Return only: done <n> hooks <m>.
+
+## Continuous improvement (where to look for each merge field)
+Merge fields and the signals they need:
+- **opener** needs one concrete, checkable fact: founder launch posts (YC launches, company blog), interviews and podcasts with quotes, papers (arXiv, bioRxiv, PubMed), GitHub or Hugging Face releases, press with direct quotes.
+- **bridge and workload (and heavy/light class)** need compute evidence: GitHub/HF repos and frameworks, paper method sections (GPU counts, model sizes), careers pages (ML, MLOps, CUDA roles), engineering blog posts, Apollo technologies (PyTorch, CUDA, Jetson).
+- **DUBIOUS notes:** location (YC profile, contact page), startup status (blog and news recency, careers page, domain alive).
+Playbook: `LR_Playbook` holds the current version: per bucket, the ordered list of preferred domains, the variant weights, which source types to prefer for opener and for class evidence, and verify-skip domains. Seed v1 is `DOMAINS` in `prep_queue.py` (regenerate the queue with `--playbook playbook.json` after an update; `playbook_ver.txt` carries the version into batches).
+**Retro (every 200 researched contacts or weekly, whichever comes first; the first run of the day does it):**
+1. Export `LR_Results` (validated and failed) and `LR_Usage` to temp files; run `python -I scripts/validate.py` then `python -I scripts/retro.py --dir <folder>`.
+2. Write `source_stats.csv`, `type_stats.csv` and `variant_stats.json` into `LR_Sources` and `LR_Variants`; paste `retro_report.md` into `LR_Retro`.
+3. Update the playbook only within guardrails: at most 3 changes per retro; a domain needs n >= 20 before promotion (P/F hook rate >= 60%) or demotion (< 25%); keep 20% exploration; drop a variant for a bucket only after 60 samples; write a new `LR_Playbook` row (v2, v3, ...) with the reason, and set `LR_State.playbook_ver`.
+4. Efficiency changes count as improvements too: skip fetches for trusted domains; stop using variants or domains with a high tokens-per-hook and low hook rate.
+5. Weekly, in an interactive session with the Apollo connector (not in a routine): join replies (Apollo message search, status replied) back to each contact's src_type, domain, tier and variant; log reply rate per source in `LR_Sources` (columns reply_n, reply_rate) and mark small samples (< 10 replies) as unreliable. Once replies exist, weight sources by replies per 100 emails, not just hook rate.
+
+## Token tracking (as granular as the platform allows)
+- **Per batch (exact):** each worker subagent's completion reports `subagent_tokens`, `tool_uses` and `duration_ms`. The orchestrator appends one `LR_Usage` row per batch: timestamp, run_id, batch_id, n_contacts, subagent_tokens, tool_uses, duration_ms, model, effort, playbook_ver, searches (sum), fetches (sum), valid_rows, pf_hooks, tokens_per_contact, tokens_per_pf_hook.
+- **Per contact (estimate):** `retro.py` splits each batch's tokens across its contacts in proportion to searches + 1.5 x fetches and stores `est_tokens` in `LR_Results`. Label it an estimate. To calibrate, every 20th batch run 4 workers with one contact each and flag those rows `calib=1` (exact per-contact tokens).
+- **Aggregates:** tokens per valid P/F hook by bucket, variant, domain, source type, verified vs not, and per day.
+- **Not measurable in the cloud (record as `unknown`, never invent):** the orchestrator's own context tokens, cache read/write split, and the usage-meter percentages. If the routine's run log (RemoteTrigger get_run_log) shows a session total, record it in `LR_Usage` as `run_total` and report orchestrator overhead = run_total minus the sum of subagent tokens.
+
+## Scheduled cloud routines (create after `LR_Queue` exists; interactive session creates them with Jason's OK)
+Cron is UTC with a 1-hour minimum; 7pm-9am America/New_York (EST, UTC-5) = 00:00-14:00 UTC (re-convert if daylight saving changes). Routines `lean-research-a/b/c` at `5 0 * * *`, `10 5 * * *`, `15 10 * * *`; model `claude-sonnet-5-5`; repo = this repo; research only. There is NO per-run contact cap: run until the session limit ends the run. Prompt (self-contained): "Read 03_lean_research_skill/SKILL.md and follow Mode C exactly: Google Sheet tabs LR_* hold queue, results, usage and state; run retro when due; never spend Apollo credits, enrich, enroll or send; never commit contact data."
+Each run: (1) exit if `LR_State.paused` is TRUE or `lock_heartbeat` is under 15 minutes old; set the lock. (2) Loop: next batch, workers, validate, append `LR_Results` and `LR_Usage`, refresh heartbeat, retro when due. (3) Stop when the queue is empty or the session limit ends the run; clear the lock if still alive.
+**Weekly 67% pause:** a cloud run cannot read usage. Enforce it with a local Claude Code desktop watchdog (only works while the Claude app is open): every 2 hours call `get_usage`; if "Weekly · all models" percentUsed >= 67, set `LR_State.paused=TRUE, paused_by_cap=TRUE` and disable the three routines with RemoteTrigger update (`enabled:false`); if `paused_by_cap` and weekly percentUsed < 20, re-enable them and set both flags FALSE. When the computer is off there is no check; Jason accepted this (no per-run cap).
+
+## After research (interactive session)
+1. `python -I scripts/build_import.py` merges validated research with fallbacks into `fields_for_import.csv` (Email, opener, bridge, workload, credit_compute, spend_sentence, Enrichment flags) and `sheet_log.csv`.
+2. Write to Apollo with the bulk contact-create call (keyed by email, typed_custom_fields, optional "P1 Wave NN" lists) after a 3-contact test, or Jason does the CSV import with "Enrich emails" OFF.
+3. Enrollment: next ~100 contacts by rank as contact IDs, all 10 mailboxes, ramp, siblings held until the lead has received all 3 emails.

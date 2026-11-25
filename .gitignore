@@ -1,0 +1,12 @@
+# Never commit contact data or credentials
+*.csv
+*.tsv
+out/
+batches/
+validated.tsv
+failed.tsv
+state.json
+.env
+*password*
+*credential*
+desktop.ini
