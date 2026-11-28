@@ -4,6 +4,8 @@ usage:
   ledger.py batches --dir D [--size N|auto] [--max N] [--reclaim]
   ledger.py merge   --dir D
   ledger.py status  --dir D
+  ledger.py defer   --dir D --bucket NAME     (mark a bucket's pending contacts UNPROCESSED: skipped by batches, excluded from import)
+  ledger.py undefer --dir D [--bucket NAME]   (release them for research)
 contacts.tsv header (tab separated): contact_id first last title company domain email bucket class compliance
   bucket in robotics_vision|llm_agents|bio_health|video_media|data_ml_infra|other_ai ; class heavy|light ; compliance 0|1
 Files in D: contacts.tsv, batches/bNNNN.tsv, out/bNNNN.tsv (workers append), research.tsv (merged, deduped),
@@ -78,6 +80,28 @@ def read_claims(d):
     return out
 
 
+def deferred_ids(d):
+    p = os.path.join(d, "deferred.tsv")
+    return {l.split("\t")[0] for l in open(p, encoding="utf-8")} if os.path.exists(p) else set()
+
+
+def cmd_defer(a):
+    done, _ = read_done(a.dir, load_contacts(a.dir))
+    have = deferred_ids(a.dir)
+    new = [c["contact_id"] for c in load_contacts(a.dir) if c.get("bucket") == a.bucket and c["contact_id"] not in done and c["contact_id"] not in have]
+    with open(os.path.join(a.dir, "deferred.tsv"), "a", encoding="utf-8") as f:
+        for i in new: f.write(f"{i}\t{a.bucket}\n")
+    print(f"deferred {len(new)} contacts in bucket {a.bucket} (UNPROCESSED: no research, no fallback copy, excluded from import)")
+
+
+def cmd_undefer(a):
+    p = os.path.join(a.dir, "deferred.tsv")
+    keep = [l for l in open(p, encoding="utf-8")] if os.path.exists(p) else []
+    keep2 = [l for l in keep if a.bucket and l.rstrip("\n").split("\t")[1] != a.bucket]
+    open(p, "w", encoding="utf-8").writelines(keep2)
+    print(f"released {len(keep)-len(keep2)} contacts")
+
+
 def cmd_init(a):
     os.makedirs(os.path.join(a.dir, "batches"), exist_ok=True)
     os.makedirs(os.path.join(a.dir, "out"), exist_ok=True)
@@ -95,8 +119,9 @@ def cmd_batches(a):
     done, _ = read_done(a.dir, contacts)
     now = time.time()
     claims = read_claims(a.dir)
+    deferred = deferred_ids(a.dir)
     live = {c for _, c, t in claims if (now - t) < CLAIM_TTL} if not a.reclaim else set()
-    pending = [c for c in contacts if c["contact_id"] not in done and c["contact_id"] not in live]
+    pending = [c for c in contacts if c["contact_id"] not in done and c["contact_id"] not in live and c["contact_id"] not in deferred]
     if a.max:
         pending = pending[: a.max]
     made = []
@@ -164,21 +189,24 @@ def cmd_status(a):
     done, bad = read_done(a.dir, contacts)
     st = load_state(a.dir)
     hooks = sum(1 for r in done.values() if r[5] in ("P", "F"))
-    print(f"contacts {len(contacts)} done {len(done)} pending {len(contacts)-len(done)} P/F hooks {hooks} "
+    dfr = len(deferred_ids(a.dir) - set(done))
+    print(f"contacts {len(contacts)} done {len(done)} pending {len(contacts)-len(done)-dfr} UNPROCESSED(deferred) {dfr} P/F hooks {hooks} "
           f"batch_size {st.get('size')}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     sp = ap.add_subparsers(dest="cmd", required=True)
-    for name in ("init", "batches", "merge", "status"):
+    for name in ("init", "batches", "merge", "status", "defer", "undefer"):
         p = sp.add_parser(name)
         p.add_argument("--dir", required=True)
         if name == "init":
             p.add_argument("--contacts", required=True)
+        if name in ("defer", "undefer"):
+            p.add_argument("--bucket", required=(name == "defer"))
         if name == "batches":
             p.add_argument("--size", default="auto")
             p.add_argument("--max", type=int, default=0)
             p.add_argument("--reclaim", action="store_true")
     a = ap.parse_args()
-    {"init": cmd_init, "batches": cmd_batches, "merge": cmd_merge, "status": cmd_status}[a.cmd](a)
+    {"init": cmd_init, "batches": cmd_batches, "merge": cmd_merge, "status": cmd_status, "defer": cmd_defer, "undefer": cmd_undefer}[a.cmd](a)
