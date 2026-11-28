@@ -13,7 +13,7 @@ LIGHT_CC = "about 40 hours on a 4x L40 node"
 SPEND = {
     "seed": "For reference, a typical seed-stage startup running GPUs on a hyperscaler pays around $8-20K a month, and even our list rates, without the startup discounts, would save $2.5-8K of that.",
     "later": "For reference, a Series A-B startup running GPUs on a hyperscaler often pays $50-200K a month, so even our list rates, without the startup discounts, could save $15-60K of that.",
-    "unknown": "For reference, startups running GPUs on a hyperscaler often pay $8-200K a month depending on stage, and even our list rates, without the startup discounts, can save 30-40% of that.",
+    "unknown": "For reference, startups running GPUs on a hyperscaler often pay $8-200K a month depending on stage, and even our list rates, without the startup discounts, can save 30-40% of that ($2.4K-$80K saved monthly).",
 }
 V1 = "I'm reaching out to {c} because it looks like you're working on {a}."
 V2 = "{c} came up as a team working on {a}, so I'm writing to you directly."
