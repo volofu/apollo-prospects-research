@@ -13,7 +13,7 @@ LIGHT_CC = "about 40 hours on a 4x L40 node"
 SPEND = {
     "seed": "For reference, a typical seed-stage startup running GPUs on a hyperscaler pays around $8-20K a month, and even our list rates, without the startup discounts, would save $2.5-8K of that.",
     "later": "For reference, a Series A-B startup running GPUs on a hyperscaler often pays $50-200K a month, so even our list rates, without the startup discounts, could save $15-60K of that.",
-    "unknown": "For reference, startups running GPUs on a hyperscaler often pay $8-200K a month depending on stage, and even our list rates, without the startup discounts, can save 30-40% of that.",
+    "unknown": "For reference, startups running GPUs on a hyperscaler often pay $8-200K a month depending on stage, and even our list rates, without the startup discounts, can save 30-40% of that ($2.4K-$80K saved monthly).",
 }
 V1 = "I'm reaching out to {c} because it looks like you're working on {a}."
 V2 = "{c} came up as a team working on {a}, so I'm writing to you directly."
@@ -22,7 +22,7 @@ COLSOUT = ["contact email", "contact first name", "contact last name", "contact 
            "Custom Field: credit_compute", "Custom Field: spend_sentence", "Custom Field: Source Website",
            "Custom Field: Enrichment flags", "Custom Field: Enrichment evidence", "Custom Field: funding_stage",
            "Custom Field: Last Round Amount", "Custom Field: Last Round Date", "Custom Field: Implied Valuation",
-           "Custom Field: Funding Source", "apollo contact id"]  # last 4 funding columns after funding_stage may be NEW fields: flag to user
+           "Custom Field: Funding Data Source URL", "apollo contact id"]  # last 4 funding columns after funding_stage may be NEW fields: flag to user
 V_COLS = ["contact_id", "opener", "bridge", "workload", "wclass", "hook_grade", "source_url", "evidence", "ev",
           "d_loc", "d_hook", "d_compute", "d_status"]
 
@@ -45,7 +45,7 @@ def flags(r, grade):
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--funding"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--dir", required=True); ap.add_argument("--funding"); ap.add_argument("--include-unprocessed", action="store_true", help="also emit contacts that were never researched (fallback copy). Default: processed contacts only"); a = ap.parse_args()
     D = a.dir
     contacts = list(csv.DictReader(open(os.path.join(D, "contacts.tsv"), newline="", encoding="utf-8"), delimiter="\t"))
     val = {}
@@ -58,8 +58,15 @@ if __name__ == "__main__":
     if a.funding and os.path.exists(a.funding):
         for r in csv.DictReader(open(a.funding, newline="", encoding="utf-8"), delimiter="\t"):
             fund[r["company_domain"].lower()] = r
-    rows, nf = [], []
+    searched = set()
+    rp = os.path.join(D, "research.tsv")
+    if os.path.exists(rp):
+        for line in open(rp, encoding="utf-8"):
+            searched.add(line.split("\t")[0])
+    rows, nf, unproc = [], [], []
     for c in contacts:
+        if c["contact_id"] not in searched and not a.include_unprocessed:
+            unproc.append(c["contact_id"] + "\t" + c["email"] + "\t" + (c.get("bucket") or "")); continue
         r = val.get(c["contact_id"]); b = c.get("bucket") or "other_ai"
         co = clean_company(c["company"])
         if r:
@@ -87,11 +94,13 @@ if __name__ == "__main__":
                      "Custom Field: funding_stage": stage, "Custom Field: Last Round Amount": fd.get("last_round_amount_usd", ""),
                      "Custom Field: Last Round Date": fd.get("last_round_date", ""),
                      "Custom Field: Implied Valuation": fd.get("post_money_valuation_usd", ""),
-                     "Custom Field: Funding Source": fd.get("source_url", ""), "apollo contact id": c["contact_id"]})
-    cols = [k for k in COLSOUT if (fund or not k.startswith("Custom Field: Last Round") and k not in ("Custom Field: Implied Valuation", "Custom Field: Funding Source", "Custom Field: funding_stage"))]
+                     "Custom Field: Funding Data Source URL": fd.get("source_url", ""), "apollo contact id": c["contact_id"]})
+    cols = [k for k in COLSOUT if (fund or not k.startswith("Custom Field: Last Round") and k not in ("Custom Field: Implied Valuation", "Custom Field: Funding Data Source URL", "Custom Field: funding_stage"))]
     with open(os.path.join(D, "import.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(rows)
+    with open(os.path.join(D, "unprocessed.tsv"), "w", encoding="utf-8") as f:
+        f.write("\n".join(unproc) + ("\n" if unproc else ""))
     with open(os.path.join(D, "name_flags.tsv"), "w", encoding="utf-8") as f:
         for t in nf: f.write("\t".join(t) + "\n")
     res = sum(1 for c in contacts if c["contact_id"] in val)
-    print(f"import rows {len(rows)} researched {res} fallback {len(rows)-res} name_flags {len(nf)} funding_rows {len(fund)}")
+    print(f"import rows {len(rows)} validated-hook {res} searched-but-fallback-copy {len(rows)-res} UNPROCESSED-excluded {len(unproc)} name_flags {len(nf)} funding_rows {len(fund)}")
