@@ -22,7 +22,7 @@ COLSOUT = ["contact email", "contact first name", "contact last name", "contact 
            "Custom Field: credit_compute", "Custom Field: spend_sentence", "Custom Field: Source Website",
            "Custom Field: Enrichment flags", "Custom Field: Enrichment evidence", "Custom Field: funding_stage",
            "Custom Field: Last Round Amount", "Custom Field: Last Round Date", "Custom Field: Implied Valuation",
-           "Custom Field: Funding Source", "apollo contact id"]  # last 4 funding columns after funding_stage may be NEW fields: flag to user
+           "Custom Field: Funding Data Source URL", "apollo contact id"]  # last 4 funding columns after funding_stage may be NEW fields: flag to user
 V_COLS = ["contact_id", "opener", "bridge", "workload", "wclass", "hook_grade", "source_url", "evidence", "ev",
           "d_loc", "d_hook", "d_compute", "d_status"]
 
@@ -87,8 +87,8 @@ if __name__ == "__main__":
                      "Custom Field: funding_stage": stage, "Custom Field: Last Round Amount": fd.get("last_round_amount_usd", ""),
                      "Custom Field: Last Round Date": fd.get("last_round_date", ""),
                      "Custom Field: Implied Valuation": fd.get("post_money_valuation_usd", ""),
-                     "Custom Field: Funding Source": fd.get("source_url", ""), "apollo contact id": c["contact_id"]})
-    cols = [k for k in COLSOUT if (fund or not k.startswith("Custom Field: Last Round") and k not in ("Custom Field: Implied Valuation", "Custom Field: Funding Source", "Custom Field: funding_stage"))]
+                     "Custom Field: Funding Data Source URL": fd.get("source_url", ""), "apollo contact id": c["contact_id"]})
+    cols = [k for k in COLSOUT if (fund or not k.startswith("Custom Field: Last Round") and k not in ("Custom Field: Implied Valuation", "Custom Field: Funding Data Source URL", "Custom Field: funding_stage"))]
     with open(os.path.join(D, "import.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=cols, extrasaction="ignore"); w.writeheader(); w.writerows(rows)
     with open(os.path.join(D, "name_flags.tsv"), "w", encoding="utf-8") as f:
